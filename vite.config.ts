@@ -1,5 +1,11 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ARENA_PORT = Number(process.env.ARENA_WS_PORT || 5181);
 
 /** Must match ks-wallet-be listen port (see `main.ts` default 3005 when PORT unset). */
 const WALLET_API_TARGET =
@@ -39,17 +45,46 @@ function walletApiProxy(): ProxyOptions {
   };
 }
 
+/** Starts arena WebSocket server when you run `npm run dev:vite` (no separate terminal). */
+function arenaServerPlugin() {
+  let child: ChildProcess | null = null;
+  return {
+    name: "arena-ws-dev-server",
+    configureServer() {
+      if (process.env.VITE_ARENA_WS_EXTERNAL === "1") return () => undefined;
+      const script = path.join(__dirname, "server", "arena-ws.mjs");
+      child = spawn(process.execPath, [script], {
+        cwd: __dirname,
+        stdio: "inherit",
+        env: { ...process.env, ARENA_WS_PORT: String(ARENA_PORT) },
+      });
+      child.on("error", (err) => {
+        console.error("[arena-ws] failed to start:", err.message);
+      });
+      return () => {
+        child?.kill();
+        child = null;
+      };
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), arenaServerPlugin()],
   server: {
     port: 5180,
-    /** Same-origin in dev: browser → Vite → ks-wallet-be (avoids CORS / mixed-content edge cases). */
     proxy: {
       "/v2": walletApiProxy(),
       "/auth": walletApiProxy(),
       "/relayer": walletApiProxy(),
       "/chains-and-network": walletApiProxy(),
       "/gas-tank": walletApiProxy(),
+      "/arena-ws": {
+        target: `ws://127.0.0.1:${ARENA_PORT}`,
+        ws: true,
+        changeOrigin: true,
+        rewrite: () => "",
+      },
     },
   },
 });
