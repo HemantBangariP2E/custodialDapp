@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/chains.ts","./src/main.tsx","./src/relayer-client.ts","./src/vite-env.d.ts","./src/wallet-auth-flow.ts"],"version":"5.6.3"}
