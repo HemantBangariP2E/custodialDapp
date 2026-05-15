@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently -n vite,arena -c blue,magenta \"vite\" \"node server/arena-ws.mjs\"",
     "dev:vite": "vite",
+    "start": "node server/arena-ws.mjs",
     "arena-server": "node server/arena-ws.mjs",
     "start:arena": "node server/arena-ws.mjs",
     "build": "tsc -b && vite build",

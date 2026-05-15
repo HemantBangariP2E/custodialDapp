@@ -1,0 +1,10 @@
+# Arena WebSocket service only (deploy this repo root on Railway; frontend stays on Netlify).
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm install"
+
+[deploy]
+startCommand = "node server/arena-ws.mjs"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
