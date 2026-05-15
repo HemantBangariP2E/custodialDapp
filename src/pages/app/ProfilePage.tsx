@@ -32,7 +32,7 @@ export default function ProfilePage() {
           <p className="label">API key (masked)</p>
           <p className="mono">{apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : "—"}</p>
         </div>
-        <div>
+        {/* <div>
           <div style={labelStyle}>Active network</div>
           <select
             style={inputStyle}
@@ -51,10 +51,11 @@ export default function ProfilePage() {
               </option>
             ))}
           </select>
+        
+        </div> */}
           <p className="muted small" style={{ marginTop: 8 }}>
             Chain ID: {chainId}
           </p>
-        </div>
       </section>
     </div>
   );
