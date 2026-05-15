@@ -1,13 +1,18 @@
 import { useCallback, useState } from "react";
 import { apiPost, createWalletApiBase, relayerWriteApiBase } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { shortBalanceError } from "../lib/formatBalance";
 import { postRelayerSendTransaction } from "../relayer-client";
 
 export function useWalletActions() {
   const { session, apiConfig, chainId } = useAuth();
   const [nativeBalanceOut, setNativeBalanceOut] = useState("");
   const [tokenBalanceOut, setTokenBalanceOut] = useState("");
+  const [nativeBalanceError, setNativeBalanceError] = useState("");
+  const [tokenBalanceError, setTokenBalanceError] = useState("");
   const [balBusy, setBalBusy] = useState(false);
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   /** @deprecated use nativeBalanceOut */
   const balanceOut = nativeBalanceOut;
@@ -60,45 +65,48 @@ export function useWalletActions() {
     async (tokenAddress: string, tokenCurrency = "ETH") => {
       if (!session?.walletAddress) return;
       setBalBusy(true);
-      setNativeBalanceOut("");
-      setTokenBalanceOut("");
+      setNativeBalanceError("");
+      setTokenBalanceError("");
+      const cid = parseInt(chainId, 10);
+      const base = { baseUrl: createWalletApiBase() };
+
       try {
-        const cid = parseInt(chainId, 10);
-        const [native, token] = await Promise.all([
-          apiPost(
+        const native = await apiPost(
+          "v2/wallet/balance",
+          {
+            address: session.walletAddress,
+            chainId: cid,
+            currency: "ETH",
+          },
+          apiConfig,
+          base,
+        );
+        setNativeBalanceOut(JSON.stringify(native, null, 2));
+      } catch (e) {
+        setNativeBalanceError(shortBalanceError(String((e as Error).message)));
+      }
+
+      if (tokenAddress.trim()) {
+        await sleep(500);
+        try {
+          const token = await apiPost(
             "v2/wallet/balance",
             {
               address: session.walletAddress,
               chainId: cid,
-              currency: "ETH",
+              currency: tokenCurrency.trim() || "ETH",
+              smartContractAddress: tokenAddress.trim(),
             },
             apiConfig,
-            { baseUrl: createWalletApiBase() },
-          ),
-          tokenAddress.trim()
-            ? apiPost(
-                "v2/wallet/balance",
-                {
-                  address: session.walletAddress,
-                  chainId: cid,
-                  currency: tokenCurrency.trim() || "ETH",
-                  smartContractAddress: tokenAddress.trim(),
-                },
-                apiConfig,
-                { baseUrl: createWalletApiBase() },
-              )
-            : Promise.resolve(null),
-        ]);
-        setNativeBalanceOut(JSON.stringify(native, null, 2));
-        if (token) setTokenBalanceOut(JSON.stringify(token, null, 2));
-        else setTokenBalanceOut("Set a token contract address to load ERC-20 balance.");
-      } catch (e) {
-        const msg = String((e as Error).message);
-        setNativeBalanceOut(msg);
-        setTokenBalanceOut(msg);
-      } finally {
-        setBalBusy(false);
+            base,
+          );
+          setTokenBalanceOut(JSON.stringify(token, null, 2));
+        } catch (e) {
+          setTokenBalanceError(shortBalanceError(String((e as Error).message)));
+        }
       }
+
+      setBalBusy(false);
     },
     [session, apiConfig, chainId],
   );
@@ -175,6 +183,8 @@ export function useWalletActions() {
     balanceOut,
     nativeBalanceOut,
     tokenBalanceOut,
+    nativeBalanceError,
+    tokenBalanceError,
     balBusy,
     fetchNativeBalance,
     fetchTokenBalance,

@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { CopyButton } from "../../components/ui/CopyButton";
 import { useAuth } from "../../context/AuthContext";
 import { DEMO_ERC20 } from "../../lib/demoToken";
-import { formatBalanceHint, formatErc20Line } from "../../lib/formatBalance";
+import { formatErc20Line, formatNativeLine } from "../../lib/formatBalance";
 import { useWalletActions } from "../../hooks/useWalletActions";
-import { btnGhost, card, inputStyle, labelStyle } from "../../styles/ui";
+import { btnGhost, card } from "../../styles/ui";
 
 const quickLinks = [
   { to: "/app/send", title: "Transfer", desc: "Native send (wallet pays gas)" },
@@ -25,30 +25,40 @@ function parseBalanceJson(raw: string): unknown {
 
 export default function DashboardPage() {
   const { session, selectedChain, chainId } = useAuth();
-  const { nativeBalanceOut, tokenBalanceOut, balBusy, refreshBalances } = useWalletActions();
-  const [tokenAddress, setTokenAddress] = useState<string>(DEMO_ERC20.address);
-  const [tokenSymbol, setTokenSymbol] = useState<string>(DEMO_ERC20.symbol);
+  const {
+    nativeBalanceOut,
+    tokenBalanceOut,
+    nativeBalanceError,
+    tokenBalanceError,
+    balBusy,
+    refreshBalances,
+  } = useWalletActions();
 
+  const initialLoad = useRef(false);
   const wallet = session?.walletAddress ?? "";
+  const nativeSymbol = "ETH";
 
-  const nativeHint = useMemo(() => {
+  const nativeLine = useMemo(() => {
     const p = parseBalanceJson(nativeBalanceOut);
-    return p ? formatBalanceHint(p) : nativeBalanceOut && !nativeBalanceOut.startsWith("{") ? nativeBalanceOut : "";
-  }, [nativeBalanceOut]);
+    if (!p) return null;
+    const line = formatNativeLine(p, nativeSymbol);
+    return line === "—" ? null : line;
+  }, [nativeBalanceOut, nativeSymbol]);
 
- 
-  const tokenHint = useMemo(() => {
+  const erc20Line = useMemo(() => {
     const p = parseBalanceJson(tokenBalanceOut);
-    return p ? formatErc20Line(p) : tokenBalanceOut && !tokenBalanceOut.startsWith("{") ? tokenBalanceOut : "";
+    if (!p) return null;
+    const line = formatErc20Line(p);
+    return line === "—" ? null : line;
   }, [tokenBalanceOut]);
 
   useEffect(() => {
+    if (initialLoad.current) return;
+    initialLoad.current = true;
     void refreshBalances(DEMO_ERC20.address, DEMO_ERC20.symbol);
   }, [refreshBalances]);
 
-   console.log("render dashboard", { nativeBalanceOut, tokenBalanceOut });
-
-  const reload = () => void refreshBalances(tokenAddress, tokenSymbol);
+  const reload = () => void refreshBalances(DEMO_ERC20.address, DEMO_ERC20.symbol);
 
   return (
     <div className="page">
@@ -65,7 +75,7 @@ export default function DashboardPage() {
           {session?.email && <p className="small muted">{session.email}</p>}
           <div className="wallet-row">
             <p className="mono break wallet-addr">{wallet || "—"}</p>
-            {wallet && <CopyButton text={wallet}  />}
+            {wallet && <CopyButton text={wallet} label="Copy address" />}
           </div>
         </article>
 
@@ -73,47 +83,25 @@ export default function DashboardPage() {
           <div className="balance-head">
             <p className="label">Balances</p>
             <button type="button" style={btnGhost} disabled={balBusy} onClick={reload}>
-              {balBusy ? "Refreshing…" : "Refresh all"}
+              {balBusy ? "Refreshing…" : "Refresh"}
             </button>
           </div>
 
           <div className="balance-block">
             <p className="balance-title">Native</p>
-            {nativeHint && <p className="balance-amount">{nativeHint}</p>}
-            {nativeBalanceOut ? (
-              <p className="balance-amount">{nativeBalanceOut}</p>
-            ) : (
-              <p className="muted small">Loading native balance…</p>
+            {nativeLine && <p className="balance-amount">{nativeLine}</p>}
+            {nativeBalanceError && <p className="balance-error">{nativeBalanceError}</p>}
+            {!nativeLine && !nativeBalanceError && (
+              <p className="muted small">{balBusy ? "Loading…" : "—"}</p>
             )}
           </div>
 
           <div className="balance-block">
-            <p className="balance-title">ERC-20 token</p>
-            <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
-              <div>
-                <div style={labelStyle}>Token contract</div>
-                <input
-                  style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }}
-                  value={tokenAddress}
-                  onChange={(e) => setTokenAddress(e.target.value)}
-                  placeholder="0x…"
-                />
-              </div>
-              {/* <div style={{ maxWidth: 120 }}>
-                <div style={labelStyle}>Currency label</div>
-                <input
-                  style={inputStyle}
-                  value={tokenSymbol}
-                  onChange={(e) => setTokenSymbol(e.target.value)}
-                />
-              </div> */}
-            </div>
-            {tokenHint ? (
-              <p className="balance-amount">{tokenHint}</p>
-            ) : tokenBalanceOut ? (
-              <p className="muted small">{tokenBalanceOut}</p>
-            ) : (
-              <p className="muted small">Loading token balance…</p>
+            <p className="balance-title">ERC-20</p>
+            {erc20Line && <p className="balance-amount">{erc20Line}</p>}
+            {tokenBalanceError && <p className="balance-error">{tokenBalanceError}</p>}
+            {!erc20Line && !tokenBalanceError && (
+              <p className="muted small">{balBusy ? "Loading…" : "—"}</p>
             )}
           </div>
         </article>

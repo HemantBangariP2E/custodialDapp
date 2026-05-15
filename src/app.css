@@ -235,6 +235,12 @@
   color: var(--accent);
 }
 
+.balance-error {
+  font-size: 0.85rem;
+  color: var(--warn, #c9a227);
+  margin: 0;
+}
+
 .small {
   font-size: 0.85rem;
 }
