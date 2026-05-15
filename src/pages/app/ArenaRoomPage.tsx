@@ -5,6 +5,12 @@ import { useAuth } from "../../context/AuthContext";
 import { useArenaSocket } from "../../hooks/useArenaSocket";
 import type { ArenaRoom, RpsMove } from "../../lib/arenaTypes";
 import { RPS_EMOJI, RPS_MOVES } from "../../lib/rps";
+import {
+  ARENA_DEV_SETUP_HINT,
+  ARENA_PROD_SETUP_HINT,
+  arenaWsDisplayUrl,
+  isArenaWsConfigured,
+} from "../../lib/arenaSocketUrl";
 import { btn, btnGhost, card, inputStyle } from "../../styles/ui";
 
 function eqAddr(a: string, b: string) {
@@ -104,8 +110,11 @@ export default function ArenaRoomPage() {
       {!connected && (
         <section style={card}>
           <p className="warn-box">
-            Waiting for arena server on <code>ws://127.0.0.1:5181</code>. Run <code>npm run dev</code> or{" "}
-            <code>npm run arena-server</code>.
+            {!isArenaWsConfigured()
+              ? ARENA_PROD_SETUP_HINT
+              : `Connecting to ${arenaWsDisplayUrl()}… ${
+                  import.meta.env.DEV ? ARENA_DEV_SETUP_HINT : "Ensure the arena server is reachable."
+                }`}
           </p>
         </section>
       )}

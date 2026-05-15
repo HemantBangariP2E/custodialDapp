@@ -5,7 +5,8 @@
 import { WebSocketServer } from "ws";
 import { randomBytes } from "crypto";
 
-const PORT = Number(process.env.ARENA_WS_PORT || 5181);
+/** Railway/Render set PORT; local dev may use ARENA_WS_PORT. */
+const PORT = Number(process.env.PORT || process.env.ARENA_WS_PORT || 5181);
 /** @type {Map<string, object>} */
 const rooms = new Map();
 
@@ -72,7 +73,7 @@ function send(ws, msg) {
 }
 
 const wss = new WebSocketServer({ port: PORT });
-console.log(`Arena WS → ws://127.0.0.1:${PORT}`);
+console.log(`Arena WS listening on port ${PORT}`);
 
 wss.on("connection", (ws) => {
   ws._roomId = null;

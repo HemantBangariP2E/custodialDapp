@@ -43,7 +43,7 @@ export default function LoginPage() {
   const [sendBusy, setSendBusy] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [message, setMessage] = useState(pending ? "Wallet creation incomplete — verify or retry below." : "");
-  const [registerGasTank, setRegisterGasTank] = useState(true);
+  const [registerGasTank] = useState(true);
   const [createLog, setCreateLog] = useState("");
   const [gasTankLog, setGasTankLog] = useState("");
   const [createBusy, setCreateBusy] = useState(false);

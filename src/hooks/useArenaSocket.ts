@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArenaClientMessage, ArenaRoom, ArenaServerMessage } from "../lib/arenaTypes";
-import { arenaSocketUrl } from "../lib/arenaSocketUrl";
+import {
+  ARENA_DEV_SETUP_HINT,
+  ARENA_PROD_SETUP_HINT,
+  arenaSocketUrl,
+  isArenaWsConfigured,
+} from "../lib/arenaSocketUrl";
 
 const MAX_RETRIES = 8;
 const RETRY_MS = 1500;
@@ -19,8 +24,14 @@ export function useArenaSocket() {
     if (wsRef.current?.readyState === WebSocket.OPEN) return wsRef.current;
     if (wsRef.current?.readyState === WebSocket.CONNECTING) return wsRef.current;
 
-    wsRef.current?.close();
     const url = arenaSocketUrl();
+    if (!url) {
+      setConnected(false);
+      setError(import.meta.env.DEV ? ARENA_DEV_SETUP_HINT : ARENA_PROD_SETUP_HINT);
+      return null;
+    }
+
+    wsRef.current?.close();
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -38,7 +49,9 @@ export function useArenaSocket() {
         window.setTimeout(() => connect(), RETRY_MS);
       } else {
         setError(
-          "Arena server unreachable. From project folder run: npm run arena-server (or npm run dev to start Vite + arena together).",
+          import.meta.env.DEV
+            ? `Arena server unreachable at ${url}. ${ARENA_DEV_SETUP_HINT}`
+            : `Cannot reach arena server at ${url}. Check that the server is running and VITE_ARENA_WS_URL uses wss:// on HTTPS sites.`,
         );
       }
     };
@@ -138,6 +151,7 @@ export function useArenaSocket() {
     room,
     roomId,
     error,
+    arenaConfigured: isArenaWsConfigured(),
     createRoom,
     joinRoom,
     syncRoom,

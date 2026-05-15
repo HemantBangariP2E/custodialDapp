@@ -4,6 +4,12 @@ import { useAuth } from "../../context/AuthContext";
 import { useArenaSocket } from "../../hooks/useArenaSocket";
 import type { RpsMove } from "../../lib/arenaTypes";
 import { RPS_EMOJI, RPS_MOVES, compareRps } from "../../lib/rps";
+import {
+  ARENA_DEV_SETUP_HINT,
+  ARENA_PROD_SETUP_HINT,
+  arenaWsDisplayUrl,
+  isArenaWsConfigured,
+} from "../../lib/arenaSocketUrl";
 import { btn, card, inputStyle, labelStyle } from "../../styles/ui";
 
 const SCORE_KEY = "vault-arena-score-v1";
@@ -27,7 +33,8 @@ export default function ArenaPage() {
   const navigate = useNavigate();
   const { session } = useAuth();
   const { connected, roomId, error, createRoom, setError } = useArenaSocket();
-  const [tab, setTab] = useState<"solo" | "multi">("multi");
+  const arenaOnline = isArenaWsConfigured();
+  const [tab, setTab] = useState<"solo" | "multi">(arenaOnline ? "multi" : "solo");
   const [stake, setStake] = useState("0.001");
   const [currency, setCurrency] = useState("ETH");
   const [creating, setCreating] = useState(false);
@@ -71,8 +78,12 @@ export default function ArenaPage() {
       setError("Enter a positive stake amount.");
       return;
     }
+    if (!arenaOnline) {
+      setError(import.meta.env.DEV ? ARENA_DEV_SETUP_HINT : ARENA_PROD_SETUP_HINT);
+      return;
+    }
     if (!connected) {
-      setError("Arena server offline — run npm run arena-server");
+      setError(import.meta.env.DEV ? ARENA_DEV_SETUP_HINT : "Arena server not connected yet.");
       return;
     }
     setCreating(true);
@@ -114,10 +125,13 @@ export default function ArenaPage() {
             Create a room, share the invite link, both pick moves. Loser sends stake to winner via custodial
             transfer.
           </p>
-          {!connected && (
+          {!arenaOnline && (
+            <p className="warn-box">{ARENA_PROD_SETUP_HINT}</p>
+          )}
+          {arenaOnline && !connected && (
             <p className="warn-box">
-              Connecting to arena server at <code>ws://127.0.0.1:5181</code>… If this stays red, restart with{" "}
-              <code>npm run dev</code> or run <code>npm run arena-server</code> in a second terminal.
+              Connecting to <code>{arenaWsDisplayUrl()}</code>…
+              {import.meta.env.DEV ? ` ${ARENA_DEV_SETUP_HINT}` : " Check that your arena server is running."}
             </p>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
@@ -136,7 +150,12 @@ export default function ArenaPage() {
               <input style={inputStyle} value={currency} onChange={(e) => setCurrency(e.target.value)} />
             </div>
           </div>
-          <button type="button" style={btn} disabled={creating || !connected} onClick={hostMatch}>
+          <button
+            type="button"
+            style={btn}
+            disabled={creating || !arenaOnline || !connected}
+            onClick={hostMatch}
+          >
             {creating ? "Creating room…" : "Create room & get invite link"}
           </button>
         </section>
