@@ -170,7 +170,7 @@ export default function LoginPage() {
           ← Vault Arena
         </Link>
         <h1>Sign in</h1>
-        <p className="muted">Email OTP + custodial wallet on ks-wallet-be</p>
+       
         {search.get("next")?.includes("/arena/room/") && (
           <p className="warn-box" style={{ marginTop: 12 }}>
             You were invited to a match — after sign-in you will return to the room to join as guest.
@@ -225,14 +225,14 @@ export default function LoginPage() {
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
             />
           </div>
-          <label style={{ display: "flex", gap: 8, fontSize: 13, alignItems: "center" }}>
+          {/* <label style={{ display: "flex", gap: 8, fontSize: 13, alignItems: "center" }}>
             <input
               type="checkbox"
               checked={registerGasTank}
               onChange={(e) => setRegisterGasTank(e.target.checked)}
             />
             Register gas tank after create
-          </label>
+          </label> */}
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

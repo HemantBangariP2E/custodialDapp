@@ -245,6 +245,70 @@
   font-size: 0.85rem;
 }
 
+.relay-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.relay-tab {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.relay-tab.active {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.gas-fee-panel {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.fee-lines {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.fee-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+}
+
+.fee-lines .fee-total {
+  border-top: 1px solid var(--border);
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  font-weight: 600;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  font: inherit;
+}
+
 @media (max-width: 720px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -576,8 +640,46 @@
   margin-bottom: 1rem;
 }
 
+.settle-tabs-three {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.settle-tabs-three .tab {
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  line-height: 1.3;
+}
+
+.settle-tabs-three .tab-sub {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.settle-tabs-three .tab.active .tab-sub {
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.settle-option-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
 .settle-option {
   padding-top: 0.25rem;
+}
+
+@media (max-width: 720px) {
+  .settle-tabs-three {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settle-option .btn {

@@ -50,3 +50,47 @@ export async function postRelayerSendTransaction<T = unknown>(
 
   return apiPost<T>("relayer/send-transaction", payload, { apiKey }, { baseUrl: options?.baseUrl ?? createWalletApiBase() });
 }
+
+export type RelayerSendWithFeeBody = {
+  fromAddress: string;
+  to: string;
+  amount: number;
+  chainId: number;
+  tokenAddress: string;
+  tokenDecimals?: number;
+  feeRecipient: string;
+  feeAmount: number;
+  currency?: string;
+  referenceNo?: string;
+};
+
+/** Stabliee-style: user pays gas fee in ERC-20 to dapp owner; recipient gets `amount`. */
+export async function postRelayerSendTransactionWithFee<T = unknown>(
+  apiKey: string,
+  body: RelayerSendWithFeeBody,
+  options?: { baseUrl?: string },
+): Promise<T> {
+  const payload: Record<string, unknown> = {
+    fromAddress: body.fromAddress.trim(),
+    to: body.to.trim(),
+    amount: body.amount,
+    chainId: body.chainId,
+    tokenAddress: body.tokenAddress.trim(),
+    feeRecipient: body.feeRecipient.trim(),
+    feeAmount: body.feeAmount,
+  };
+  const cur = body.currency?.trim();
+  if (cur) payload.currency = cur;
+  const d = body.tokenDecimals;
+  payload.tokenDecimals =
+    d !== undefined && Number.isFinite(d) ? Math.min(36, Math.max(0, Math.floor(Number(d)))) : 18;
+  const ref = body.referenceNo?.trim();
+  if (ref) payload.referenceNo = ref;
+
+  return apiPost<T>(
+    "relayer/send-transaction-with-fee",
+    payload,
+    { apiKey },
+    { baseUrl: options?.baseUrl ?? createWalletApiBase() },
+  );
+}

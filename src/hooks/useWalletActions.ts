@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { apiPost, createWalletApiBase, relayerWriteApiBase } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { shortBalanceError } from "../lib/formatBalance";
-import { postRelayerSendTransaction } from "../relayer-client";
+import { postRelayerSendTransaction, postRelayerSendTransactionWithFee } from "../relayer-client";
 
 export function useWalletActions() {
   const { session, apiConfig, chainId } = useAuth();
@@ -169,6 +169,35 @@ export function useWalletActions() {
     [session, apiConfig, chainId],
   );
 
+  const sendGaslessWithFee = useCallback(
+    async (params: {
+      to: string;
+      amount: number;
+      tokenAddress: string;
+      tokenDecimals?: number;
+      feeRecipient: string;
+      feeAmount: number;
+      currency?: string;
+      referenceNo?: string;
+    }) => {
+      if (!session?.walletAddress) throw new Error("No wallet");
+      const cid = parseInt(chainId, 10);
+      return postRelayerSendTransactionWithFee(apiConfig.apiKey, {
+        fromAddress: session.walletAddress,
+        to: params.to.trim(),
+        amount: params.amount,
+        chainId: cid,
+        tokenAddress: params.tokenAddress.trim(),
+        tokenDecimals: params.tokenDecimals ?? 18,
+        feeRecipient: params.feeRecipient.trim(),
+        feeAmount: params.feeAmount,
+        currency: params.currency?.trim() || "ETH",
+        referenceNo: params.referenceNo,
+      });
+    },
+    [session, apiConfig, chainId],
+  );
+
   const writeContract = useCallback(
     async (body: Record<string, unknown>) => {
       return apiPost("relayer/write-transaction", body, apiConfig, {
@@ -191,6 +220,7 @@ export function useWalletActions() {
     refreshBalances,
     sendNative,
     sendGasless,
+    sendGaslessWithFee,
     writeContract,
     setBalanceOut,
     setNativeBalanceOut,

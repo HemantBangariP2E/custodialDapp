@@ -1,16 +1,8 @@
-import { CHAIN_OPTIONS, optionKey } from "../../chains";
 import { useAuth } from "../../context/AuthContext";
-import { card, inputStyle, labelStyle } from "../../styles/ui";
+import { card } from "../../styles/ui";
 
 export default function ProfilePage() {
-  const {
-    session,
-    selectedChain,
-    setSelectedChain,
-    chainId,
-    setChainId,
-    apiKey,
-  } = useAuth();
+  const { session, chainId, apiKey } = useAuth();
 
   return (
     <div className="page">

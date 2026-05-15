@@ -1,10 +1,26 @@
 import { useEffect, useState } from "react";
+import { GasFeeEstimatePanel } from "../relay/GasFeeEstimatePanel";
+import { useAuth } from "../../context/AuthContext";
 import { useWalletActions } from "../../hooks/useWalletActions";
+import { DEMO_ERC20 } from "../../lib/demoToken";
+import type { GasFeeBreakdown } from "../../lib/gasFeeEstimate";
 import type { ArenaRoom } from "../../lib/arenaTypes";
+import { resolveFeeRecipient } from "../../lib/stablieeConfig";
 import { JsonOut } from "../ui/JsonOut";
-import { btn, btnGhost, card, inputStyle, labelStyle } from "../../styles/ui";
+import { btn, btnGhost, card } from "../../styles/ui";
 
-type PayMode = "native" | "gasless";
+function eqAddr(a: string, b: string) {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/** 1 = native (user pays gas) · 2 = sponsor gasless ERC-20 · 3 = user pays gas fee in ERC-20 */
+type PayMode = "native" | "gasless_sponsor" | "gasless_user_fee";
+
+const MODE_LABEL: Record<PayMode, string> = {
+  native: "native transfer (you pay gas)",
+  gasless_sponsor: "gasless sponsor (ERC-20)",
+  gasless_user_fee: "gasless + you pay gas in ERC-20",
+};
 
 type Props = {
   room: ArenaRoom;
@@ -14,34 +30,45 @@ type Props = {
 };
 
 export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }: Props) {
-  const { sendNative, sendGasless, fetchNativeBalance, balanceOut, balBusy } = useWalletActions();
-  const [mode, setMode] = useState<PayMode>("native");
+  const { chainId } = useAuth();
+  const { sendNative, sendGasless, sendGaslessWithFee, fetchNativeBalance, balanceOut, balBusy } =
+    useWalletActions();
+  const [mode, setMode] = useState<PayMode>("gasless_sponsor");
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState("");
   const [paidVia, setPaidVia] = useState<PayMode | null>(null);
+  const [gasFee, setGasFee] = useState<GasFeeBreakdown | null>(null);
 
-  const [gaslessNative, setGaslessNative] = useState(true);
-  const [tokenAddress, setTokenAddress] = useState(
-    "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
-  );
-  const [tokenDecimals, setTokenDecimals] = useState("18");
+  const feeRecipient = resolveFeeRecipient(chainId);
+  const iLost = eqAddr(myAddress, loserAddress) && room.winner !== "draw";
+  const iWon = eqAddr(myAddress, winnerAddress) && room.winner !== "draw";
 
-  const iLost =
-    myAddress.toLowerCase() === loserAddress.toLowerCase() && room.winner !== "draw";
-  const iWon = myAddress.toLowerCase() === winnerAddress.toLowerCase() && room.winner !== "draw";
-
-  const stakeLabel = `${room.stake} ${room.currency}`;
-  const refNo = `arena-settle-${room.id}`;
+  const stakeLabel = `${room.stake} ${DEMO_ERC20.symbol}`;
+  const relayerCurrency = "ETH";
+  const gasFeeToken = gasFee?.feeAmountToken ?? 0;
 
   useEffect(() => {
     if (iLost) void fetchNativeBalance();
   }, [iLost, fetchNativeBalance]);
 
+  const ensureLoser = (): boolean => {
+    if (!iLost) {
+      setOut("Only the loser can pay the stake.");
+      return false;
+    }
+    if (!winnerAddress.trim() || eqAddr(winnerAddress, loserAddress)) {
+      setOut("Invalid winner address for settlement.");
+      return false;
+    }
+    return true;
+  };
+
   const payNative = async () => {
+    if (!ensureLoser()) return;
     setBusy(true);
     setOut("");
     try {
-      const data = await sendNative(winnerAddress, room.stake, room.currency);
+      const data = await sendNative(winnerAddress.trim(), room.stake, "ETH");
       setOut(JSON.stringify(data, null, 2));
       setPaidVia("native");
     } catch (e) {
@@ -51,22 +78,49 @@ export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }
     }
   };
 
-  const payGasless = async () => {
+  const payGaslessSponsor = async () => {
+    if (!ensureLoser()) return;
     setBusy(true);
     setOut("");
     try {
       const data = await sendGasless({
-        to: winnerAddress,
+        to: winnerAddress.trim(),
         amount: room.stake,
-        native: gaslessNative,
-        tokenAddress: gaslessNative ? undefined : tokenAddress,
-        tokenDecimals: parseInt(tokenDecimals, 10),
-        currency: room.currency,
-        nativeCurrency: room.currency,
-        referenceNo: refNo,
+        native: false,
+        tokenAddress: DEMO_ERC20.address,
+        tokenDecimals: DEMO_ERC20.decimals,
+        currency: relayerCurrency,
+        nativeCurrency: relayerCurrency,
       });
       setOut(JSON.stringify(data, null, 2));
-      setPaidVia("gasless");
+      setPaidVia("gasless_sponsor");
+    } catch (e) {
+      setOut(String((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const payGaslessUserFee = async () => {
+    if (!ensureLoser()) return;
+    if (!gasFee || gasFee.feeAmountToken <= 0) {
+      setOut("Wait for gas fee estimate, then try again.");
+      return;
+    }
+    setBusy(true);
+    setOut("");
+    try {
+      const data = await sendGaslessWithFee({
+        to: winnerAddress.trim(),
+        amount: room.stake,
+        tokenAddress: DEMO_ERC20.address,
+        tokenDecimals: DEMO_ERC20.decimals,
+        feeRecipient,
+        feeAmount: gasFee.feeAmountToken,
+        currency: relayerCurrency,
+      });
+      setOut(JSON.stringify(data, null, 2));
+      setPaidVia("gasless_user_fee");
     } catch (e) {
       setOut(String((e as Error).message));
     } finally {
@@ -100,102 +154,112 @@ export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }
       {iLost && (
         <>
           {paidVia ? (
-            <p className="settle-win">
-              Payment submitted via {paidVia === "native" ? "native transfer" : "gasless relayer"}.
-            </p>
+            <p className="settle-win">Payment submitted via {MODE_LABEL[paidVia]}.</p>
           ) : (
             <>
               <p className="label" style={{ marginTop: 16 }}>
                 Choose how to pay
               </p>
-              <div className="arena-tabs settle-tabs">
+              <div className="arena-tabs settle-tabs settle-tabs-three">
                 <button
                   type="button"
                   className={mode === "native" ? "tab active" : "tab"}
                   onClick={() => setMode("native")}
                 >
-                  Native (you pay gas)
+                  1. Native
+                  <span className="tab-sub">You pay gas (ETH)</span>
                 </button>
                 <button
                   type="button"
-                  className={mode === "gasless" ? "tab active" : "tab"}
-                  onClick={() => setMode("gasless")}
+                  className={mode === "gasless_sponsor" ? "tab active" : "tab"}
+                  onClick={() => setMode("gasless_sponsor")}
                 >
-                  Gasless (relayer)
+                  2. Gasless sponsor
+                  <span className="tab-sub">ERC-20 · sponsor pays gas</span>
+                </button>
+                <button
+                  type="button"
+                  className={mode === "gasless_user_fee" ? "tab active" : "tab"}
+                  onClick={() => setMode("gasless_user_fee")}
+                >
+                  3. Gasless + your gas fee
+                  <span className="tab-sub">ERC-20 fee to dapp owner</span>
                 </button>
               </div>
 
+              <p className="mono break small" style={{ marginBottom: 12 }}>
+                From (you): {myAddress}
+                <br />
+                To (winner): {winnerAddress}
+              </p>
+
               {mode === "native" && (
                 <div className="settle-option">
+                  <h4 className="settle-option-title">1. Native — you pay gas</h4>
                   <p className="muted small">
-                    <code>POST /v2/wallet/send-transaction</code> — sends {stakeLabel} from your custodial
-                    wallet. Requires enough native coin for amount + gas.
+                    <code>POST /v2/wallet/send-transaction</code>
+                    <br />
+                    Sends stake in <strong>native ETH</strong>. Network gas is deducted from your ETH
+                    balance (you pay gas).
                   </p>
-                  {balanceOut && (
-                    <JsonOut label="Your native balance (hint)">{balanceOut}</JsonOut>
-                  )}
-                  <button
-                    type="button"
-                    style={btn}
-                    disabled={busy || balBusy}
-                    onClick={payNative}
-                  >
-                    {busy ? "Sending…" : `Pay ${stakeLabel} (native)`}
+                  {balanceOut && <JsonOut label="Your native balance">{balanceOut}</JsonOut>}
+                  <button type="button" style={btn} disabled={busy || balBusy} onClick={payNative}>
+                    {busy ? "Sending…" : `Pay ${room.stake} ETH (native)`}
                   </button>
                 </div>
               )}
 
-              {mode === "gasless" && (
+              {mode === "gasless_sponsor" && (
                 <div className="settle-option">
+                  <h4 className="settle-option-title">2. Gasless sponsor — ERC-20</h4>
                   <p className="muted small">
-                    <code>POST /relayer/send-transaction</code> — sponsor pays gas when your project gas
-                    tank is configured. Use native or ERC-20 depending on what you hold.
+                    <code>POST /relayer/send-transaction</code>
+                    <br />
+                    Sends <strong>{stakeLabel}</strong> to the winner. Project <strong>sponsor</strong> pays
+                    on-chain gas (gas tank). You only spend the token amount.
                   </p>
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      marginBottom: 12,
-                      fontSize: 14,
-                      alignItems: "center",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={gaslessNative}
-                      onChange={(e) => setGaslessNative(e.target.checked)}
-                    />
-                    Gasless native ({room.currency})
-                  </label>
-                  {!gaslessNative && (
-                    <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-                      <div>
-                        <div style={labelStyle}>ERC-20 token contract</div>
-                        <input
-                          style={inputStyle}
-                          value={tokenAddress}
-                          onChange={(e) => setTokenAddress(e.target.value)}
-                          placeholder="0x…"
-                        />
-                      </div>
-                      <div style={{ maxWidth: 120 }}>
-                        <div style={labelStyle}>Decimals</div>
-                        <input
-                          style={inputStyle}
-                          value={tokenDecimals}
-                          onChange={(e) => setTokenDecimals(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <p className="muted small">
+                    Token <span className="mono">{DEMO_ERC20.address}</span> ·{" "}
+                    <code>currency: {relayerCurrency}</code>
+                  </p>
+                  <button type="button" style={btn} disabled={busy} onClick={payGaslessSponsor}>
+                    {busy ? "Sending…" : `Pay ${stakeLabel} (sponsor gasless)`}
+                  </button>
+                </div>
+              )}
+
+              {mode === "gasless_user_fee" && (
+                <div className="settle-option">
+                  <h4 className="settle-option-title">3. Gasless — you pay gas in ERC-20</h4>
+                  <p className="muted small">
+                    <code>POST /relayer/send-transaction-with-fee</code>
+                    <br />
+                    Winner gets <strong>{stakeLabel}</strong>. You also pay an estimated <strong>gas fee</strong>{" "}
+                    in {DEMO_ERC20.symbol} to the dapp owner. Sponsor still pays on-chain gas.
+                  </p>
+                  <p className="mono break small">
+                    Fee recipient (dapp owner): {feeRecipient}
+                  </p>
+                  <GasFeeEstimatePanel
+                    chainId={chainId}
+                    tokenSymbol={DEMO_ERC20.symbol}
+                    onFeeReady={setGasFee}
+                  />
+                  <p className="small" style={{ marginTop: 8 }}>
+                    Total from you: <strong>{(Number(room.stake) + gasFeeToken).toFixed(6)}</strong>{" "}
+                    {DEMO_ERC20.symbol} ({room.stake} stake + {gasFeeToken.toFixed(6)} gas fee)
+                  </p>
                   <button
                     type="button"
                     style={btn}
-                    disabled={busy || (!gaslessNative && !tokenAddress.trim())}
-                    onClick={payGasless}
+                    disabled={busy || gasFeeToken <= 0}
+                    onClick={payGaslessUserFee}
                   >
-                    {busy ? "Sending…" : `Pay ${stakeLabel} (gasless)`}
+                    {busy ? "Sending…" : `Pay ${stakeLabel} + gas fee`}
                   </button>
+                  {gasFeeToken <= 0 && !busy && (
+                    <p className="muted small">Waiting for gas estimate…</p>
+                  )}
                 </div>
               )}
             </>
@@ -209,7 +273,7 @@ export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }
 
       {out && <JsonOut label="Transaction result">{out}</JsonOut>}
 
-      {iLost && !paidVia && (
+      {iLost && !paidVia && mode === "native" && (
         <button
           type="button"
           style={{ ...btnGhost, marginTop: 12 }}
