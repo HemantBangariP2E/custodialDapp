@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { BackendGasEstimateBlock } from "../../components/wallet/BackendGasEstimateBlock";
 import { GasFeeEstimatePanel } from "../../components/relay/GasFeeEstimatePanel";
 import { useAuth } from "../../context/AuthContext";
 import { useWalletActions } from "../../hooks/useWalletActions";
 import type { GasFeeBreakdown } from "../../lib/gasFeeEstimate";
+import type { EstimateGasApiResponse } from "../../lib/walletEstimateGas";
 import { DEMO_ERC20 } from "../../lib/demoToken";
 import { resolveFeeRecipient } from "../../lib/stablieeConfig";
 import { JsonOut } from "../../components/ui/JsonOut";
@@ -12,7 +14,8 @@ type Tab = "sponsor" | "stabliee";
 
 export default function RelayPage() {
   const { chainId } = useAuth();
-  const { sendGasless, sendGaslessWithFee, fetchTokenBalance } = useWalletActions();
+  const { sendGasless, sendGaslessWithFee, fetchTokenBalance, estimateErc20TransferGas } =
+    useWalletActions();
   const [tab, setTab] = useState<Tab>("sponsor");
 
   return (
@@ -45,7 +48,11 @@ export default function RelayPage() {
 
       <section style={card}>
         {tab === "sponsor" ? (
-          <SponsorTab sendGasless={sendGasless} fetchTokenBalance={fetchTokenBalance} />
+          <SponsorTab
+            sendGasless={sendGasless}
+            fetchTokenBalance={fetchTokenBalance}
+            estimateErc20TransferGas={estimateErc20TransferGas}
+          />
         ) : (
           <StablieeTab
             chainId={chainId}
@@ -61,9 +68,11 @@ export default function RelayPage() {
 function SponsorTab({
   sendGasless,
   fetchTokenBalance,
+  estimateErc20TransferGas,
 }: {
   sendGasless: ReturnType<typeof useWalletActions>["sendGasless"];
   fetchTokenBalance: ReturnType<typeof useWalletActions>["fetchTokenBalance"];
+  estimateErc20TransferGas: ReturnType<typeof useWalletActions>["estimateErc20TransferGas"];
 }) {
   const native = false;
   const [to, setTo] = useState("");
@@ -77,6 +86,50 @@ function SponsorTab({
   const [balBusy, setBalBusy] = useState(false);
   const [out, setOut] = useState("");
   const [tokenBal, setTokenBal] = useState("");
+  const [gasEstimate, setGasEstimate] = useState<EstimateGasApiResponse | null>(null);
+  const [gasLoading, setGasLoading] = useState(false);
+  const [gasError, setGasError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const t = to.trim();
+    const tok = token.trim();
+    const amt = Number(amount);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(t) || !/^0x[a-fA-F0-9]{40}$/.test(tok)) {
+      setGasEstimate(null);
+      setGasError("");
+      setGasLoading(false);
+      return;
+    }
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setGasEstimate(null);
+      setGasError("");
+      setGasLoading(false);
+      return;
+    }
+    setGasLoading(true);
+    setGasError("");
+    const timer = window.setTimeout(() => {
+      void estimateErc20TransferGas({ to: t, amount: amt, tokenAddress: tok })
+        .then((r) => {
+          if (cancelled) return;
+          setGasEstimate(r);
+          setGasError("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setGasEstimate(null);
+          setGasError(String((e as Error).message));
+        })
+        .finally(() => {
+          if (!cancelled) setGasLoading(false);
+        });
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [to, amount, token, estimateErc20TransferGas]);
 
   const disabled = busy || !to.trim() || !amount.trim() || (!native && !token.trim());
   const hint = useMemo(() => {
@@ -133,6 +186,10 @@ function SponsorTab({
         refNo={ref}
         setRefNo={setRef}
       />
+      <p className="muted small" style={{ marginTop: 12 }}>
+        On-chain gas (sponsored by relayer — estimate below is informational):
+      </p>
+      <BackendGasEstimateBlock loading={gasLoading} error={gasError} estimate={gasEstimate} />
       {!native && (
         <button
           type="button"
@@ -183,6 +240,16 @@ function StablieeTab({
   const [out, setOut] = useState("");
   const [tokenBal, setTokenBal] = useState("");
   const [gasFee, setGasFee] = useState<GasFeeBreakdown | null>(null);
+
+  const erc20ForFee = useMemo(() => {
+    const t = to.trim();
+    const tok = token.trim();
+    const a = Number(amount);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(t) || !/^0x[a-fA-F0-9]{40}$/.test(tok) || !Number.isFinite(a) || a <= 0) {
+      return null;
+    }
+    return { to: t, amount: a, tokenAddress: tok };
+  }, [to, amount, token]);
 
   const feeAmount = gasFee?.feeAmountToken ?? 0;
   const disabled =
@@ -237,7 +304,12 @@ function StablieeTab({
         <div style={labelStyle}>Dapp owner (fee recipient)</div>
         <input style={inputStyle} value={feeRecipient} onChange={(e) => setFeeRecipient(e.target.value)} />
       </div>
-      <GasFeeEstimatePanel chainId={chainId} tokenSymbol="KC" onFeeReady={setGasFee} />
+      <GasFeeEstimatePanel
+        chainId={chainId}
+        tokenSymbol="KC"
+        onFeeReady={setGasFee}
+        erc20Transfer={erc20ForFee}
+      />
       <button
         type="button"
         style={btnGhost}

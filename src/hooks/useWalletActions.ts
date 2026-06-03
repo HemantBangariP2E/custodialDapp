@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { apiPost, createWalletApiBase, relayerWriteApiBase } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { shortBalanceError } from "../lib/formatBalance";
+import type { EstimateGasApiResponse } from "../lib/walletEstimateGas";
 import { postRelayerSendTransaction, postRelayerSendTransactionWithFee } from "../relayer-client";
 
 export function useWalletActions() {
@@ -111,6 +112,69 @@ export function useWalletActions() {
     [session, apiConfig, chainId],
   );
 
+  /** Native ETH transfer gas — `POST /v2/wallet/estimate-gas`. */
+  const estimateNativeTransferGas = useCallback(
+    async (to: string, amount: number) => {
+      if (!session?.walletAddress) throw new Error("No wallet");
+      const cid = parseInt(chainId, 10);
+      const body = {
+        chainId: cid,
+        from: session.walletAddress,
+        to: to.trim(),
+        amount: Number.isFinite(amount) ? amount : 0,
+      };
+      const root = createWalletApiBase();
+      const url = root ? `${root.replace(/\/$/, "")}/v2/wallet/estimate-gas` : "/v2/wallet/estimate-gas (same-origin)";
+      console.log("[v2/wallet/estimate-gas] HIT · native", url, body);
+      try {
+        const res = await apiPost<EstimateGasApiResponse>(
+          "v2/wallet/estimate-gas",
+          body,
+          apiConfig,
+          { baseUrl: createWalletApiBase() },
+        );
+        console.log("[v2/wallet/estimate-gas] OK · native", res);
+        return res;
+      } catch (e) {
+        console.error("[v2/wallet/estimate-gas] FAIL · native", e);
+        throw e;
+      }
+    },
+    [session, apiConfig, chainId],
+  );
+
+  /** ERC-20 `transfer` gas — same endpoint with `smartContractAddress`. */
+  const estimateErc20TransferGas = useCallback(
+    async (params: { to: string; amount: number; tokenAddress: string }) => {
+      if (!session?.walletAddress) throw new Error("No wallet");
+      const cid = parseInt(chainId, 10);
+      const body = {
+        chainId: cid,
+        from: session.walletAddress,
+        to: params.to.trim(),
+        amount: Number.isFinite(params.amount) ? params.amount : 0,
+        smartContractAddress: params.tokenAddress.trim(),
+      };
+      const root = createWalletApiBase();
+      const url = root ? `${root.replace(/\/$/, "")}/v2/wallet/estimate-gas` : "/v2/wallet/estimate-gas (same-origin)";
+      console.log("[v2/wallet/estimate-gas] HIT · erc20", url, body);
+      try {
+        const res = await apiPost<EstimateGasApiResponse>(
+          "v2/wallet/estimate-gas",
+          body,
+          apiConfig,
+          { baseUrl: createWalletApiBase() },
+        );
+        console.log("[v2/wallet/estimate-gas] OK · erc20", res);
+        return res;
+      } catch (e) {
+        console.error("[v2/wallet/estimate-gas] FAIL · erc20", e);
+        throw e;
+      }
+    },
+    [session, apiConfig, chainId],
+  );
+
   const sendNative = useCallback(
     async (to: string, amount: number, currency: string) => {
       if (!session?.walletAddress) throw new Error("No wallet");
@@ -123,8 +187,8 @@ export function useWalletActions() {
           amount: Number.isFinite(amount) ? amount : 0,
           chainId: cid,
           currency: currency.trim() || "ETH",
-          userShard: "",
-          userIndentity: "",
+          // userShard: "",
+          // userIndentity: "",
         },
         apiConfig,
         { baseUrl: createWalletApiBase() },
@@ -218,6 +282,8 @@ export function useWalletActions() {
     fetchNativeBalance,
     fetchTokenBalance,
     refreshBalances,
+    estimateNativeTransferGas,
+    estimateErc20TransferGas,
     sendNative,
     sendGasless,
     sendGaslessWithFee,

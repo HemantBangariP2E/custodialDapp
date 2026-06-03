@@ -1,7 +1,9 @@
 /**
- * Gas fee estimate (treasury-style): gasUsed × gasPrice → native ETH → USD.
- * Uses fixed 65k gas units (ERC-20 transfer), same as Stabliee GasFeeDisplay.
+ * @deprecated Prefer `gasFeeBreakdownFromWalletEstimate` + POST /v2/wallet/estimate-gas.
+ * Legacy treasury-style: fixed gas units × RPC gasPrice → ETH → USD (browser RPC + CoinGecko).
  */
+
+import type { EstimateGasApiResponse } from "./walletEstimateGas";
 
 const ESTIMATED_GAS_UNITS = 65_000;
 const ETH_PRICE_URL =
@@ -67,13 +69,48 @@ async function fetchLegacyGasPrice(rpc: string): Promise<bigint> {
   return hexToBigInt(hex);
 }
 
-async function fetchEthPriceUsd(): Promise<number> {
+/** CoinGecko — ETH/USD for converting wallet API `estimatedCostEth` to USD. */
+export async function fetchEthPriceUsd(): Promise<number> {
   const res = await fetch(ETH_PRICE_URL);
   if (!res.ok) throw new Error("ETH price unavailable");
   const json = (await res.json()) as { ethereum?: { usd?: number } };
   const p = json?.ethereum?.usd;
   if (p == null || !Number.isFinite(p)) throw new Error("ETH price missing");
   return p;
+}
+
+/** Map `POST /v2/wallet/estimate-gas` ERC-20 result into the same breakdown shape as legacy relay estimate. */
+export function gasFeeBreakdownFromWalletEstimate(
+  est: EstimateGasApiResponse,
+  ethPriceUsd: number,
+  opts?: { multiplier?: number; platformPercent?: number },
+): GasFeeBreakdown {
+  const multiplier = opts?.multiplier ?? 1;
+  const platformPercent = opts?.platformPercent ?? 0.01;
+  const gasCostEth = parseFloat(est.estimatedCostEth ?? "0");
+  const safeCost = Number.isFinite(gasCostEth) ? gasCostEth : 0;
+  const gasUnits = parseInt(est.gasLimitWithBuffer ?? est.estimatedGasLimit ?? "0", 10) || 65000;
+  let gasPriceWei = 0n;
+  try {
+    gasPriceWei = BigInt(est.gasPriceWei ?? "0");
+  } catch {
+    gasPriceWei = 0n;
+  }
+  const gasUsd = safeCost * ethPriceUsd * multiplier;
+  const platformFeeUsd = gasUsd * platformPercent;
+  const totalFeeUsd = gasUsd + platformFeeUsd;
+  const feeAmountToken = Math.max(0.000001, Math.round(totalFeeUsd * 1e6) / 1e6);
+  return {
+    gasUnits,
+    gasPriceWei,
+    gasCostEth: safeCost,
+    ethPriceUsd,
+    gasUsd,
+    platformFeeUsd,
+    multiplier,
+    totalFeeUsd,
+    feeAmountToken,
+  };
 }
 
 export async function estimateRelayGasFeeUsd(

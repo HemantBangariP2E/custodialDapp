@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GasFeeEstimatePanel } from "../relay/GasFeeEstimatePanel";
+import { BackendGasEstimateBlock } from "../wallet/BackendGasEstimateBlock";
 import { useAuth } from "../../context/AuthContext";
 import { useWalletActions } from "../../hooks/useWalletActions";
+import type { EstimateGasApiResponse } from "../../lib/walletEstimateGas";
 import { DEMO_ERC20 } from "../../lib/demoToken";
 import type { GasFeeBreakdown } from "../../lib/gasFeeEstimate";
 import type { ArenaRoom } from "../../lib/arenaTypes";
@@ -31,17 +33,35 @@ type Props = {
 
 export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }: Props) {
   const { chainId } = useAuth();
-  const { sendNative, sendGasless, sendGaslessWithFee, fetchNativeBalance, balanceOut, balBusy } =
-    useWalletActions();
+  const {
+    sendNative,
+    sendGasless,
+    sendGaslessWithFee,
+    fetchNativeBalance,
+    estimateNativeTransferGas,
+    session,
+    balanceOut,
+    balBusy,
+  } = useWalletActions();
   const [mode, setMode] = useState<PayMode>("gasless_sponsor");
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState("");
   const [paidVia, setPaidVia] = useState<PayMode | null>(null);
   const [gasFee, setGasFee] = useState<GasFeeBreakdown | null>(null);
+  const [nativeGasEstimate, setNativeGasEstimate] = useState<EstimateGasApiResponse | null>(null);
+  const [nativeGasLoading, setNativeGasLoading] = useState(false);
+  const [nativeGasError, setNativeGasError] = useState("");
 
   const feeRecipient = resolveFeeRecipient(chainId);
   const iLost = eqAddr(myAddress, loserAddress) && room.winner !== "draw";
   const iWon = eqAddr(myAddress, winnerAddress) && room.winner !== "draw";
+
+  const erc20GasTarget = useMemo(() => {
+    const w = winnerAddress.trim();
+    const stake = Number(room.stake);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(w) || !Number.isFinite(stake) || stake <= 0) return null;
+    return { to: w, amount: stake, tokenAddress: DEMO_ERC20.address };
+  }, [winnerAddress, room.stake]);
 
   const stakeLabel = `${room.stake} ${DEMO_ERC20.symbol}`;
   const relayerCurrency = "ETH";
@@ -50,6 +70,52 @@ export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }
   useEffect(() => {
     if (iLost) void fetchNativeBalance();
   }, [iLost, fetchNativeBalance]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!iLost || mode !== "native" || !winnerAddress.trim() || !/^0x[a-fA-F0-9]{40}$/.test(winnerAddress.trim())) {
+      setNativeGasEstimate(null);
+      setNativeGasError("");
+      setNativeGasLoading(false);
+      return;
+    }
+    const stake = Number(room.stake);
+    if (!session?.walletAddress || !Number.isFinite(stake) || stake <= 0) {
+      setNativeGasEstimate(null);
+      setNativeGasError("");
+      setNativeGasLoading(false);
+      return;
+    }
+    setNativeGasLoading(true);
+    setNativeGasError("");
+    const timer = window.setTimeout(() => {
+      void estimateNativeTransferGas(winnerAddress.trim(), stake)
+        .then((r) => {
+          if (cancelled) return;
+          setNativeGasEstimate(r);
+          setNativeGasError("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setNativeGasEstimate(null);
+          setNativeGasError(String((e as Error).message));
+        })
+        .finally(() => {
+          if (!cancelled) setNativeGasLoading(false);
+        });
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    iLost,
+    mode,
+    winnerAddress,
+    room.stake,
+    session?.walletAddress,
+    estimateNativeTransferGas,
+  ]);
 
   const ensureLoser = (): boolean => {
     if (!iLost) {
@@ -203,6 +269,11 @@ export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }
                     balance (you pay gas).
                   </p>
                   {balanceOut && <JsonOut label="Your native balance">{balanceOut}</JsonOut>}
+                  <BackendGasEstimateBlock
+                    loading={nativeGasLoading}
+                    error={nativeGasError}
+                    estimate={nativeGasEstimate}
+                  />
                   <button type="button" style={btn} disabled={busy || balBusy} onClick={payNative}>
                     {busy ? "Sending…" : `Pay ${room.stake} ETH (native)`}
                   </button>
@@ -244,6 +315,7 @@ export function SettlementPanel({ room, myAddress, winnerAddress, loserAddress }
                     chainId={chainId}
                     tokenSymbol={DEMO_ERC20.symbol}
                     onFeeReady={setGasFee}
+                    erc20Transfer={erc20GasTarget}
                   />
                   <p className="small" style={{ marginTop: 8 }}>
                     Total from you: <strong>{(Number(room.stake) + gasFeeToken).toFixed(6)}</strong>{" "}

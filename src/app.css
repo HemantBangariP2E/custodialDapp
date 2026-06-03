@@ -685,3 +685,21 @@
 .settle-option .btn {
   margin-top: 0.75rem;
 }
+
+/* Backend POST /v2/wallet/estimate-gas */
+.gas-estimate-panel {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(99, 102, 241, 0.06);
+}
+.gas-estimate-amount {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.gas-estimate-line {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}

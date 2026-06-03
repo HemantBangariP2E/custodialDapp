@@ -18,6 +18,7 @@ export const CHAIN_OPTIONS: readonly ChainOption[] = [
   { blockchain: "LIN", network: "SEPOLIA", chainId: "59141" },
   { blockchain: "OP", network: "SEPOLIA", chainId: "11155420" },
   { blockchain: "POLY", network: "AMOY", chainId: "80002" },
+  {blockchain: "ADI" , network: "TESTNET", chainId: "99999" },
 ] as const;
 
 export const DEFAULT_CHAIN: ChainOption = CHAIN_OPTIONS[0];
